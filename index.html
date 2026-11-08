@@ -469,6 +469,8 @@ const CONFIG = ['CLAUDE.md', 'config.json', 'settings/shared.json', 'mcp/claude-
 let filesLoaded = false;
 function fileGroup(p) {
   if (CONFIG.includes(p)) return 'ตั้งค่า';
+  if (/^machines\/[^/]+\.json$/.test(p)) return 'เครื่องที่ใช้ระบบนี้';
+  if (p.startsWith('conflicts/')) return 'ฉบับที่ถูกแก้พร้อมกัน (เก็บไว้กันหาย)';
   if (p.startsWith('.claude/skills/')) return 'Skills ส่วนตัว';
   const m = p.match(/^history\/([^/]+)\/(account-skills|claude-code)\//);
   if (!m) return null;
@@ -487,7 +489,7 @@ async function loadFiles(force) {
   if (src.kind === 'github' && force) await src.tree(true);
   const files = (await src.tree()).filter(f => (TEXT_EXT.test(f.path) || IMG_EXT.test(f.path)))
     .map(f => ({ ...f, group: fileGroup(f.path) })).filter(f => f.group);
-  const order = g => (g === 'ตั้งค่า' ? 0 : g === 'Skills ส่วนตัว' ? 1 : g.startsWith('Memory') ? 2 : g.startsWith('Skills') ? 3 : 4);
+  const order = g => (g === 'เครื่องที่ใช้ระบบนี้' ? 0 : g === 'ตั้งค่า' ? 1 : g.startsWith('ฉบับที่') ? 2 : g === 'Skills ส่วนตัว' ? 3 : g.startsWith('Memory') ? 4 : g.startsWith('Skills') ? 5 : 6);
   files.sort((a, b) => order(a.group) - order(b.group) || a.group.localeCompare(b.group) || a.path.localeCompare(b.path));
   let html = '', group = null;
   for (const f of files) {
