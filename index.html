@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161513" media="(prefers-color-scheme: dark)">
+<title>Claude History</title>
+<style>
+:root{
+  --bg:#f7f6f3; --panel:#ffffff; --panel-2:#f1efea; --text:#1f1e1c; --muted:#6b6862; --line:#e4e1da;
+  --accent:#c2410c; --accent-soft:#fdeee6; --user:#eef3fb; --user-line:#d6e2f5; --code:#f4f2ee; --mark:#fde68a;
+  --err:#b91c1c;
+  font-family:"Segoe UI","Leelawadee UI","Noto Sans Thai",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#161513; --panel:#1f1e1b; --panel-2:#272622; --text:#ecebe7; --muted:#a19e96; --line:#34322d;
+    --accent:#fb923c; --accent-soft:#3a2418; --user:#1f2a3a; --user-line:#2d3d55; --code:#2a2925; --mark:#7c5e10;
+    --err:#f87171;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;display:flex;flex-direction:column}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none!important}
+header{display:flex;gap:10px;align-items:center;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+header h1{font-size:16px;margin:0;font-weight:650;display:flex;align-items:center;gap:8px;white-space:nowrap}
+header h1 span{width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block}
+.tabs{display:flex;gap:4px;background:var(--panel-2);padding:3px;border-radius:9px}
+.tabs button{border:0;background:transparent;padding:5px 12px;border-radius:7px;cursor:pointer;color:var(--muted)}
+.tabs button.on{background:var(--panel);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.grow{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);padding:5px 12px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn:disabled{opacity:.6;cursor:wait}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#syncInfo{color:var(--muted);font-size:13px}
+#syncInfo.err{color:var(--err);cursor:help}
+main{flex:1;display:flex;min-height:0}
+aside{width:360px;max-width:42vw;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel);min-height:0}
+.filters{padding:10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.filters input,.filters select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.filters .row{display:flex;gap:8px}
+#list{overflow:auto;flex:1;-webkit-overflow-scrolling:touch}
+.day{position:sticky;top:0;background:var(--panel-2);color:var(--muted);font-size:12px;padding:4px 12px;font-weight:600}
+.item{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.item:hover{background:var(--panel-2)}
+.item.on{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
+.item .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.item .m{color:var(--muted);font-size:12px;margin-top:2px}
+.item .s{color:var(--muted);font-size:12.5px;margin-top:4px}
+.tag{display:inline-block;padding:0 6px;border-radius:5px;background:var(--panel-2);font-size:11.5px;margin-right:4px}
+.tag.cowork{background:var(--accent-soft);color:var(--accent)}
+#view,#fview{flex:1;overflow:auto;min-width:0;-webkit-overflow-scrolling:touch}
+.empty{color:var(--muted);text-align:center;margin-top:20vh;padding:0 16px}
+.conv{max-width:860px;margin:0 auto;padding:20px 20px 80px}
+.conv h2{margin:0 0 4px;font-size:21px;line-height:1.35}
+.conv .meta{color:var(--muted);font-size:13px;margin-bottom:6px;word-break:break-all}
+.toolbar{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:10px 0 18px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.toolbar label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.msg{margin:14px 0}
+.who{font-size:12px;color:var(--muted);margin-bottom:3px}
+.msg.user .bubble{background:var(--user);border:1px solid var(--user-line);border-radius:12px;padding:10px 14px}
+.msg.assistant .bubble{padding:2px 0}
+.msg.side{opacity:.8;border-left:2px dashed var(--line);padding-left:12px}
+.bubble{overflow-wrap:anywhere}
+.bubble img{max-width:100%;border-radius:8px;border:1px solid var(--line);margin:6px 0;cursor:zoom-in}
+.bubble p{margin:.45em 0}
+.bubble h2,.bubble h3,.bubble h4,.bubble h5{margin:.9em 0 .35em;line-height:1.3}
+.bubble h2{font-size:1.2em}.bubble h3{font-size:1.08em}.bubble h4,.bubble h5{font-size:1em}
+.bubble ul,.bubble ol{margin:.4em 0;padding-left:1.4em}
+.bubble blockquote{margin:.5em 0;padding:2px 12px;border-left:3px solid var(--line);color:var(--muted)}
+.bubble table{border-collapse:collapse;margin:.6em 0;font-size:14px;display:block;overflow-x:auto}
+.bubble th,.bubble td{border:1px solid var(--line);padding:4px 9px;text-align:left;vertical-align:top}
+.bubble th{background:var(--panel-2)}
+.bubble a{color:var(--accent)}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-family:Consolas,"Cascadia Mono",ui-monospace,monospace;font-size:.88em}
+pre{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.5;max-height:520px}
+pre code{background:none;padding:0}
+details.tool,details.think{border:1px solid var(--line);border-radius:8px;margin:8px 0;background:var(--panel)}
+details.tool>summary,details.think>summary{cursor:pointer;padding:6px 10px;color:var(--muted);font-size:13px;list-style:none;overflow-wrap:anywhere}
+details>summary::-webkit-details-marker{display:none}
+details.tool>summary::before,details.think>summary::before{content:"▸ ";}
+details[open].tool>summary::before,details[open].think>summary::before{content:"▾ ";}
+details.tool .body,details.think .body{padding:0 10px 8px}
+details.tool .err{color:var(--err)}
+.think .body{color:var(--muted);white-space:pre-wrap;font-size:14px}
+.hide-tools details.tool,.hide-think details.think,.hide-meta .msg.meta{display:none}
+.hide-tools .msg:not(.has-text):not(.has-think),.hide-think .msg:not(.has-text):not(.has-tool),.hide-tools.hide-think .msg:not(.has-text){display:none}
+.hl{background:var(--mark);border-radius:3px}
+.files{display:flex;flex:1;min-height:0}
+.ftree{width:360px;max-width:42vw;border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+.ftree h4{margin:0;padding:6px 12px;background:var(--panel-2);font-size:12px;color:var(--muted);position:sticky;top:0}
+.ftree .f{padding:6px 12px;cursor:pointer;font-size:13.5px;word-break:break-all;border-bottom:1px solid var(--line)}
+.ftree .f:hover{background:var(--panel-2)} .ftree .f.on{background:var(--accent-soft)}
+.ftree .f small{color:var(--muted)}
+#fview .conv pre{max-height:none}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
+.lightbox{background:rgba(0,0,0,.88);cursor:zoom-out}
+.lightbox img{max-width:96vw;max-height:96vh}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;max-width:520px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.card h3{margin:0 0 6px}
+.card p,.card li{color:var(--muted);font-size:14px}
+.card ol{padding-left:1.3em}
+.card label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+.card input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.card .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.card .msgline{margin-top:10px;font-size:14px;color:var(--err)}
+.qr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:12px 0}
+.qr svg{width:230px;height:230px;background:#fff;border-radius:10px;padding:6px}
+.qr code{font-size:11px;word-break:break-all;text-align:center}
+.page{flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:24px 16px}
+.back{display:none}
+@media (max-width:800px){
+  header{padding:8px 12px;gap:8px}
+  header h1 b{display:none}
+  .tabs button{padding:5px 9px}
+  #syncInfo,.lbl,.cwd{display:none}
+  aside,.ftree{width:100%;max-width:none;border-right:0}
+  main.has-sel aside,.files.has-sel .ftree{display:none}
+  main:not(.has-sel) #view,.files:not(.has-sel) #fview{display:none}
+  .back{display:inline-block;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 10px;margin-bottom:12px;cursor:pointer}
+  .conv{padding:14px 14px 60px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><span></span><b>Claude History</b></h1>
+  <div class="tabs"><button id="tabConv" class="on">บทสนทนา</button><button id="tabFiles">ไฟล์ · Skills</button></div>
+  <div class="grow"></div>
+  <span id="syncInfo"></span>
+  <button class="btn" id="mobileBtn" hidden title="เปิดบนมือถือ">📱<span class="lbl"> มือถือ</span></button>
+  <button class="btn" id="syncBtn" hidden>⟳<span class="lbl"> ซิงก์</span></button>
+  <button class="btn" id="settingsBtn" hidden title="ตั้งค่าการเชื่อมต่อ GitHub">⚙</button>
+</header>
+
+<main id="convPane">
+  <aside>
+    <div class="filters">
+      <input id="q" type="search" placeholder="ค้นหาในทุกบทสนทนา…" autocomplete="off">
+      <div class="row"><select id="fMachine"></select><select id="fProject"></select></div>
+    </div>
+    <div id="list"><div class="empty" style="margin-top:40px">กำลังโหลด…</div></div>
+  </aside>
+  <section id="view"><div class="empty">เลือกบทสนทนาทางซ้ายเพื่ออ่าน</div></section>
+</main>
+
+<div id="filesPane" class="files" hidden>
+  <div class="ftree" id="ftree"></div>
+  <section id="fview"><div class="empty">เลือกไฟล์ทางซ้ายเพื่ออ่าน</div></section>
+</div>
+
+<div id="setupPane" class="page" hidden>
+  <form class="card" id="setupForm" autocomplete="off">
+    <h3>เชื่อมต่อกับ GitHub</h3>
+    <p>หน้านี้อ่านประวัติจาก repo ส่วนตัวของคุณโดยตรง — ต้องใช้ token แบบ<b>อ่านอย่างเดียว</b> ทำครั้งเดียวต่อเครื่อง</p>
+    <ol>
+      <li>เปิด <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">github.com/settings/personal-access-tokens/new</a></li>
+      <li>Token name: <code>claude-history-phone</code> · Expiration: 1 ปี</li>
+      <li>Repository access: <b>Only select repositories</b> → เลือก <code>claude-setup</code></li>
+      <li>Permissions → Repository → <b>Contents: Read-only</b></li>
+      <li>กด Generate token แล้วคัดลอกมาวางด้านล่าง</li>
+    </ol>
+    <label for="sRepo">Repo (owner/name)</label>
+    <input id="sRepo" required pattern="[\w.\-]+/[\w.\-]+" placeholder="owner/claude-setup">
+    <label for="sBranch">Branch</label>
+    <input id="sBranch" value="main" required>
+    <label for="sToken">Token</label>
+    <input id="sToken" type="password" required placeholder="github_pat_…">
+    <p style="font-size:12.5px">token เก็บไว้ในเบราว์เซอร์นี้เท่านั้น ส่งไปที่ api.github.com อย่างเดียว ยกเลิกได้ทุกเมื่อที่หน้า GitHub</p>
+    <div class="msgline" id="setupMsg"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="setupForget">ลบ token ออกจากเครื่องนี้</button>
+      <button type="button" class="btn" id="setupCancel">ยกเลิก</button>
+      <button type="submit" class="btn primary">เชื่อมต่อ</button>
+    </div>
+  </form>
+</div>
+
+<div id="modal" class="overlay" hidden></div>
+
+<script src="qrcode.js"></script>
+<script type="module">
+import { parseTranscript, mergeIndexes } from './parse.mjs';
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime = t => t ? new Date(t).toLocaleString('th-TH', {dateStyle:'medium', timeStyle:'short'}) : '';
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : n + ' B';
+const dayKey = t => {
+  if (!t) return 'ไม่ทราบวันที่';
+  const d = new Date(t), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return 'วันนี้';
+  if (d.toDateString() === y.toDateString()) return 'เมื่อวาน';
+  return d.toLocaleDateString('th-TH', {dateStyle:'long'});
+};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+// ---------- minimal, safe markdown ----------
+function inline(s) {
+  return s.split(/(`[^`\n]+`)/g).map((part, i) => {
+    if (i % 2) return '<code>' + esc(part.slice(1, -1)) + '</code>';
+    return esc(part)
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  }).join('');
+}
+function md(src) {
+  const L = String(src).replace(/\r\n/g, '\n').split('\n'), out = [];
+  const isBlock = l => /^\s*(```|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\|)/.test(l) || /^\s*(---|\*\*\*)\s*$/.test(l);
+  const cells = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  for (let i = 0; i < L.length;) {
+    const l = L[i];
+    let m;
+    if (/^\s*```/.test(l)) {
+      const buf = []; i++;
+      while (i < L.length && !/^\s*```/.test(L[i])) buf.push(L[i++]);
+      i++; out.push('<pre><code>' + esc(buf.join('\n')) + '</code></pre>'); continue;
+    }
+    if (/^\s*\|/.test(l) && i + 1 < L.length && /^\s*\|?\s*:?-{2,}/.test(L[i + 1])) {
+      const head = cells(l); i += 2; const rows = [];
+      while (i < L.length && /^\s*\|/.test(L[i])) rows.push(cells(L[i++]));
+      out.push('<table><thead><tr>' + head.map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>' +
+        rows.map(r => '<tr>' + r.map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>');
+      continue;
+    }
+    if ((m = l.match(/^(#{1,6})\s+(.*)/))) { const n = Math.min(m[1].length + 1, 5); out.push('<h' + n + '>' + inline(m[2]) + '</h' + n + '>'); i++; continue; }
+    if (/^\s*(---|\*\*\*)\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(l)) {
+      const buf = []; while (i < L.length && /^\s*>/.test(L[i])) buf.push(L[i++].replace(/^\s*>\s?/, ''));
+      out.push('<blockquote>' + md(buf.join('\n')) + '</blockquote>'); continue;
+    }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const ordered = /^\s*\d/.test(l), items = [];
+      while (i < L.length && /^\s*([-*+]|\d+[.)])\s+/.test(L[i])) {
+        let it = L[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, '');
+        while (i < L.length && /^\s{2,}\S/.test(L[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(L[i])) it += '\n' + L[i++].trim();
+        items.push('<li>' + inline(it).replace(/\n/g, '<br>') + '</li>');
+      }
+      out.push(ordered ? '<ol>' + items.join('') + '</ol>' : '<ul>' + items.join('') + '</ul>'); continue;
+    }
+    if (!l.trim()) { i++; continue; }
+    const buf = [l]; i++;
+    while (i < L.length && L[i].trim() && !isBlock(L[i])) buf.push(L[i++]);
+    out.push('<p>' + buf.map(inline).join('<br>') + '</p>');
+  }
+  return out.join('');
+}
+
+// ---------- data sources ----------
+async function getJSON(u) { const r = await fetch(u, {cache: 'no-store'}); if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }
+
+// 1) the viewer.mjs server on a computer (or the same Wi-Fi)
+const LocalSource = {
+  kind: 'local',
+  indexes: () => getJSON('/api/indexes'),
+  tree: () => getJSON('/api/tree'),
+  async text(p) { const r = await fetch('/api/file?path=' + encodeURIComponent(p), {cache: 'no-store'}); if (!r.ok) throw new Error(r.status); return r.text(); },
+  async imageURL(p) { return '/api/file?path=' + encodeURIComponent(p); },
+};
+
+// 2) straight from the private GitHub repo with a read-only token (phones, anywhere)
+const idb = (() => {
+  let dbp;
+  const open = () => dbp ||= new Promise((res, rej) => {
+    const r = indexedDB.open('claude-history', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('blobs');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  return {
+    async get(k) { try { const db = await open(); return await new Promise(res => { const q = db.transaction('blobs').objectStore('blobs').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(undefined); }); } catch { return undefined; } },
+    async put(k, v) { try { const db = await open(); db.transaction('blobs', 'readwrite').objectStore('blobs').put(v, k); } catch {} },
+    async clear() { try { const db = await open(); db.transaction('blobs', 'readwrite').objectStore('blobs').clear(); } catch {} },
+  };
+})();
+const GitHubSource = {
+  kind: 'github', cfg: store.get('chv-gh', null), files: null, map: null,
+  async req(p, accept) {
+    const r = await fetch('https://api.github.com/repos/' + this.cfg.repo + p, {
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + this.cfg.token, Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if (!r.ok) { const e = new Error('GitHub ' + r.status); e.status = r.status; throw e; }
+    return r;
+  },
+  async tree(force) {
+    if (this.files && !force) return this.files;
+    const j = await (await this.req('/git/trees/' + encodeURIComponent(this.cfg.branch || 'main') + '?recursive=1')).json();
+    this.files = j.tree.filter(t => t.type === 'blob').map(t => ({ path: t.path, size: t.size, sha: t.sha }));
+    this.map = new Map(this.files.map(f => [f.path, f]));
+    return this.files;
+  },
+  async blob(p, binary) {
+    await this.tree();
+    const f = this.map.get(p);
+    if (!f) throw new Error('ไม่พบไฟล์ ' + p);
+    const key = (binary ? 'b:' : 't:') + f.sha;      // git blob sha = content hash, so cache never goes stale
+    let v = await idb.get(key);
+    if (v !== undefined) return v;
+    const r = await this.req('/git/blobs/' + f.sha, 'application/vnd.github.raw+json');
+    v = binary ? await r.blob() : await r.text();
+    idb.put(key, v);
+    return v;
+  },
+  async indexes() {
+    const files = await this.tree();
+    const out = [];
+    for (const f of files) if (/^history\/[^/]+\/index\.json$/.test(f.path)) { try { out.push(JSON.parse(await this.blob(f.path))); } catch {} }
+    return out;
+  },
+  text(p) { return this.blob(p, false); },
+  async imageURL(p) { return URL.createObjectURL(await this.blob(p, true)); },
+};
+
+let src = null, ping = null;
+async function detectSource() {
+  try {
+    const j = await getJSON('/api/ping');
+    if (j.app === 'claude-history-viewer') { ping = j; return LocalSource; }
+  } catch {}
+  return GitHubSource;
+}
+
+// ---------- conversations ----------
+let sessions = [], current = null, query = '';
+const prefs = store.get('chv', {});
+
+async function loadSessions(force) {
+  if (src.kind === 'github' && force) await src.tree(true);
+  sessions = mergeIndexes(await src.indexes());
+  fillFilters(); renderList();
+}
+function visible() {
+  const fm = $('#fMachine').value, fp = $('#fProject').value, q = query.toLowerCase();
+  return sessions.filter(s => (!fm || s.machine === fm) && (!fp || s.project === fp) &&
+    (!q || s.title.toLowerCase().includes(q) || (s.text || '').toLowerCase().includes(q)));
+}
+function fillFilters() {
+  const keep = (sel, values, label) => {
+    const v = sel.value;
+    sel.innerHTML = '<option value="">' + label + '</option>' + [...new Set(values)].sort().map(x => '<option>' + esc(x) + '</option>').join('');
+    if ([...sel.options].some(o => o.value === v)) sel.value = v;
+  };
+  keep($('#fMachine'), sessions.map(s => s.machine), 'ทุกเครื่อง');
+  keep($('#fProject'), sessions.map(s => s.project), 'ทุกโปรเจกต์');
+}
+function snippet(s) {
+  const q = query.toLowerCase(), t = s.text || '', i = t.toLowerCase().indexOf(q);
+  if (!q || i < 0) return '';
+  return (i > 60 ? '…' : '') + t.slice(Math.max(0, i - 60), i + q.length + 100).replace(/\s+/g, ' ') + '…';
+}
+function highlight(html) {
+  if (!query) return html;
+  const q = esc(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp('(' + q + ')(?![^<]*>)', 'gi'), '<mark class="hl">$1</mark>');
+}
+function renderList() {
+  const list = visible();
+  if (!list.length) {
+    $('#list').innerHTML = '<div class="empty" style="margin-top:40px">' + (query ? 'ไม่พบคำที่ค้นหา' : sessions.length ? 'ไม่มีรายการในตัวกรองนี้' : 'ยังไม่มีบทสนทนา — รอให้คอมซิงก์ประวัติขึ้น GitHub ก่อน') + '</div>';
+    return;
+  }
+  let html = '', day = null;
+  for (const s of list) {
+    const d = dayKey(s.last);
+    if (d !== day) { html += '<div class="day">' + esc(d) + '</div>'; day = d; }
+    const snip = snippet(s);
+    html += '<div class="item' + (current === s.path ? ' on' : '') + '" data-path="' + esc(s.path) + '">' +
+      '<div class="t">' + esc(s.title) + '</div>' +
+      '<div class="m"><span class="tag' + (s.project === 'Cowork' ? ' cowork' : '') + '">' + esc(s.project) + '</span>' +
+      esc(s.machine) + (s.live ? ' (ล่าสุด)' : '') + ' · ' + esc(new Date(s.last || 0).toLocaleTimeString('th-TH', {timeStyle:'short'})) + ' · ' + s.count + ' ข้อความ</div>' +
+      (snip ? '<div class="s">' + highlight(esc(snip)) + '</div>' : '') + '</div>';
+  }
+  $('#list').innerHTML = html;
+}
+
+function toolSummary(b) {
+  const i = b.input || {};
+  const hint = i.command || i.file_path || i.path || i.pattern || i.url || i.query || i.description || i.prompt || '';
+  return esc(b.name) + (hint ? ' — <code>' + esc(String(hint).slice(0, 90)) + '</code>' : '');
+}
+function joinText(items) {
+  const out = [];
+  for (const c of items) {
+    const prev = out[out.length - 1];
+    if (c.type !== 'image' && prev && prev.type !== 'image') prev.text += '\n' + c.text;
+    else out.push({ ...c });
+  }
+  return out;
+}
+const imgTag = src => /^(data:image\/|https?:)/.test(src) ? '<img src="' + esc(src) + '" loading="lazy" alt="">' : '';
+function resultHTML(r) {
+  if (!r) return '';
+  return '<div class="' + (r.error ? 'err' : '') + '"><div class="who">' + (r.error ? 'ผลลัพธ์ (error)' : 'ผลลัพธ์') + '</div>' +
+    joinText(r.content).map(c => c.type === 'image' ? imgTag(c.src)
+      : '<pre><code>' + esc(c.text.length > 20000 ? c.text.slice(0, 20000) + '\n… (ตัดเหลือ 20,000 ตัวอักษร)' : c.text) + '</code></pre>').join('') + '</div>';
+}
+function blockHTML(b) {
+  if (b.type === 'text') return md(b.text);
+  if (b.type === 'image') return imgTag(b.src);
+  if (b.type === 'thinking') return '<details class="think"><summary>ความคิดของ Claude</summary><div class="body">' + esc(b.text) + '</div></details>';
+  if (b.type === 'tool_use') {
+    const imgs = b.result ? b.result.content.filter(c => c.type === 'image').length : 0;
+    return '<details class="tool"><summary>🔧 ' + toolSummary(b) + (imgs ? ' · 🖼 ' + imgs : '') + (b.result?.error ? ' · ⚠️' : '') + '</summary><div class="body">' +
+      '<div class="who">ข้อมูลที่ส่ง</div><pre><code>' + esc(JSON.stringify(b.input, null, 2)) + '</code></pre>' + resultHTML(b.result) + '</div></details>';
+  }
+  if (b.type === 'tool_result') return '<details class="tool"><summary>ผลลัพธ์เครื่องมือ</summary><div class="body">' + resultHTML(b) + '</div></details>';
+  return '';
+}
+
+async function openSession(p) {
+  const s = sessions.find(x => x.path === p);
+  if (!s) return;
+  current = p; renderList();
+  $('#convPane').classList.add('has-sel');
+  const size = src.kind === 'github' ? src.map?.get(p)?.size : 0;
+  $('#view').innerHTML = '<div class="empty">กำลังโหลด…' + (size ? ' (' + fmtSize(size) + ' ครั้งแรก จากนั้นจำไว้ในเครื่อง)' : '') + '</div>';
+  try { history.replaceState(null, '', '#s=' + encodeURIComponent(p)); } catch {}
+  let parsed;
+  try { parsed = parseTranscript(await src.text(p)); }
+  catch (e) { $('#view').innerHTML = '<div class="empty">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>'; return; }
+  if (current !== p) return;
+  const cls = ['conv'];
+  if (!prefs.tools) cls.push('hide-tools');
+  if (!prefs.think) cls.push('hide-think');
+  if (!prefs.meta) cls.push('hide-meta');
+  let html = '<div class="' + cls.join(' ') + '" id="conv"><button class="back" id="back">← รายการ</button>' +
+    '<h2>' + esc(parsed.title || s.title) + '</h2><div class="meta">' + esc(s.project) + ' · ' + esc(s.machine) + ' · ' + fmtTime(parsed.first) +
+    (parsed.cwd ? '<span class="cwd"> · <code>' + esc(parsed.cwd) + '</code></span>' : '') + '</div>' +
+    '<div class="toolbar">' +
+    '<label><input type="checkbox" data-p="tools"' + (prefs.tools ? ' checked' : '') + '> การใช้เครื่องมือ + ภาพหน้าจอ</label>' +
+    '<label><input type="checkbox" data-p="think"' + (prefs.think ? ' checked' : '') + '> ความคิดของ Claude</label>' +
+    '<label><input type="checkbox" data-p="meta"' + (prefs.meta ? ' checked' : '') + '> ข้อความระบบ</label></div>';
+  const merged = [];
+  for (const m of parsed.msgs) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.role === 'assistant' && m.role === 'assistant' && prev.side === m.side) prev.blocks = prev.blocks.concat(m.blocks);
+    else merged.push({ ...m, blocks: [...m.blocks] });
+  }
+  for (const m of merged) {
+    const body = m.blocks.map(blockHTML).join('');
+    if (!body) continue;
+    const has = t => m.blocks.some(b => t.includes(b.type));
+    const kinds = (has(['text', 'image']) ? ' has-text' : '') + (has(['tool_use', 'tool_result']) ? ' has-tool' : '') + (has(['thinking']) ? ' has-think' : '');
+    html += '<div class="msg ' + m.role + kinds + (m.side ? ' side' : '') + (m.meta ? ' meta' : '') + '"><div class="who">' +
+      (m.role === 'user' ? 'คุณ' : 'Claude') + (m.side ? ' · งานย่อย' : '') + ' · ' + fmtTime(m.time) + '</div><div class="bubble">' + body + '</div></div>';
+  }
+  $('#view').innerHTML = highlight(html) + '</div>';
+  $('#view').scrollTop = 0;
+  const first = $('#view mark.hl');
+  if (first) first.scrollIntoView({block: 'center'});
+}
+
+// ---------- files ----------
+const TEXT_EXT = /\.(md|txt|json|js|mjs|py|ya?ml|toml|html|css|sh|cmd|ps1|csv|pine|mq5|ts)$/i, IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const CONFIG = ['CLAUDE.md', 'config.json', 'settings/shared.json', 'mcp/claude-code.json', 'mcp/claude-desktop.json'];
+let filesLoaded = false;
+function fileGroup(p) {
+  if (CONFIG.includes(p)) return 'ตั้งค่า';
+  if (p.startsWith('.claude/skills/')) return 'Skills ส่วนตัว';
+  const m = p.match(/^history\/([^/]+)\/(account-skills|claude-code)\//);
+  if (!m) return null;
+  if (m[2] === 'account-skills') return 'Skills บัญชี claude.ai — ' + m[1];
+  if (p.endsWith('.jsonl')) return null;
+  return (/\/tool-results\//.test(p) ? 'ภาพหน้าจอ / ผลลัพธ์ — ' : 'Memory และไฟล์อื่น — ') + m[1];
+}
+function shortName(p) {
+  return p.replace(/^history\/[^/]+\/(account-skills|claude-code)\//, '').replace(/^\.claude\/skills\//, '')
+    .replace(/^[A-Za-z]--Users-[^/]*?scratch-workspaces-[^/]*?-scratch-(\d{4}-\d{2}-\d{2})-[0-9a-f]+/, 'Cowork $1 ›')
+    .replace(/^[A-Za-z]--Users-[^-/]+-/, '')
+    .replace(/\/([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//g, '/$1…/')
+    .replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[0-9a-f-]{36}\//, '');
+}
+async function loadFiles(force) {
+  if (src.kind === 'github' && force) await src.tree(true);
+  const files = (await src.tree()).filter(f => (TEXT_EXT.test(f.path) || IMG_EXT.test(f.path)))
+    .map(f => ({ ...f, group: fileGroup(f.path) })).filter(f => f.group);
+  const order = g => (g === 'ตั้งค่า' ? 0 : g === 'Skills ส่วนตัว' ? 1 : g.startsWith('Memory') ? 2 : g.startsWith('Skills') ? 3 : 4);
+  files.sort((a, b) => order(a.group) - order(b.group) || a.group.localeCompare(b.group) || a.path.localeCompare(b.path));
+  let html = '', group = null;
+  for (const f of files) {
+    if (f.group !== group) { html += '<h4>' + esc(f.group) + '</h4>'; group = f.group; }
+    html += '<div class="f" data-path="' + esc(f.path) + '">' + esc(shortName(f.path)) + ' <small>' + fmtSize(f.size) + '</small></div>';
+  }
+  $('#ftree').innerHTML = html || '<div class="empty">ยังไม่มีไฟล์</div>';
+  filesLoaded = true;
+}
+async function openFile(p) {
+  document.querySelectorAll('.ftree .f').forEach(e => e.classList.toggle('on', e.dataset.path === p));
+  $('#filesPane').classList.add('has-sel');
+  const head = '<div class="conv"><button class="back" id="fback">← รายการไฟล์</button><h2>' + esc(p.split('/').pop()) + '</h2><div class="meta"><code>' + esc(p) + '</code></div>';
+  $('#fview').innerHTML = head + '<p class="empty">กำลังโหลด…</p></div>';
+  try {
+    if (IMG_EXT.test(p)) { $('#fview').innerHTML = head + '<div class="bubble"><img src="' + esc(await src.imageURL(p)) + '" alt=""></div></div>'; return; }
+    const text = await src.text(p);
+    let body;
+    if (/\.md$/i.test(p)) body = '<div class="bubble">' + md(text.replace(/^---\n[\s\S]*?\n---\n/, m => '```\n' + m.trim() + '\n```\n')) + '</div>';
+    else if (/\.json$/i.test(p)) { let t = text; try { t = JSON.stringify(JSON.parse(text), null, 2); } catch {} body = '<pre><code>' + esc(t) + '</code></pre>'; }
+    else body = '<pre><code>' + esc(text) + '</code></pre>';
+    $('#fview').innerHTML = head + body + '</div>';
+    $('#fview').scrollTop = 0;
+  } catch (e) { $('#fview').innerHTML = head + '<p class="empty">โหลดไม่สำเร็จ: ' + esc(e.message) + '</p></div>'; }
+}
+
+// ---------- local server: sync + phone access ----------
+async function refreshStatus() {
+  const st = await getJSON('/api/status');
+  $('#syncBtn').disabled = st.running;
+  $('#syncBtn').innerHTML = st.running ? '⟳<span class="lbl"> กำลังซิงก์…</span>' : '⟳<span class="lbl"> ซิงก์</span>';
+  const info = $('#syncInfo');
+  info.className = st.error ? 'err' : '';
+  info.title = st.error || '';
+  info.textContent = st.running ? '' : st.error ? 'ซิงก์มีปัญหา (ชี้เพื่อดูรายละเอียด)' : st.last ? 'ซิงก์ล่าสุด ' + new Date(st.last).toLocaleTimeString('th-TH', {timeStyle:'short'}) : '';
+  return st;
+}
+async function watchSync() {
+  let st = await refreshStatus();
+  while (st.running) { await new Promise(r => setTimeout(r, 1500)); st = await refreshStatus(); }
+  await loadSessions();
+  if (filesLoaded) await loadFiles();
+}
+function qrSVG(text) {
+  if (typeof qrcode !== 'function') return '';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+async function showMobile() {
+  const info = await getJSON('/api/mobile');
+  const owner = ping?.repo ? ping.repo.split('/')[0] : null;
+  const pages = owner ? 'https://' + owner.toLowerCase() + '.github.io/claude-history/' : null;
+  let html = '<div class="card"><h3>📱 เปิดบนมือถือ</h3>';
+  if (info.lan && info.urls.length) {
+    html += '<p><b>ใช้ Wi-Fi เดียวกับคอมนี้</b> — สแกน QR ด้วยกล้องมือถือ (มีรหัสลับในลิงก์ อย่าส่งให้คนอื่น)</p>';
+    for (const u of info.urls.slice(0, 2)) html += '<div class="qr">' + qrSVG(u) + '<code>' + esc(u.replace(/t=.*/, 't=•••')) + '</code></div>';
+  } else {
+    html += '<p><b>ใช้ Wi-Fi เดียวกับคอม:</b> ปิดหน้าต่างดำของ viewer แล้วเปิด <code>viewer-mobile.cmd</code> (Mac: <code>viewer-mobile.command</code>) แทน จากนั้นกดปุ่มนี้อีกครั้งเพื่อสแกน QR</p>';
+  }
+  if (pages) {
+    html += '<p style="margin-top:14px"><b>ใช้ได้ทุกที่ (ไม่ต้องเปิดคอม):</b> เปิดหน้านี้บนมือถือ แล้วใส่ token แบบอ่านอย่างเดียวครั้งเดียว</p><div class="qr">' + qrSVG(pages) + '<code>' + esc(pages) + '</code></div>';
+  }
+  html += '<div class="actions"><button class="btn" id="modalClose">ปิด</button></div></div>';
+  openModal(html);
+}
+function openModal(html) { $('#modal').innerHTML = html; $('#modal').hidden = false; }
+function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; $('#modal').classList.remove('lightbox'); }
+
+// ---------- GitHub setup ----------
+function showSetup(message) {
+  const c = GitHubSource.cfg;
+  const owner = /\.github\.io$/i.test(location.hostname) ? location.hostname.split('.')[0] : '';
+  $('#sRepo').value = c?.repo || (owner ? owner + '/claude-setup' : '');
+  $('#sBranch').value = c?.branch || 'main';
+  $('#sToken').value = '';
+  $('#setupMsg').textContent = message || '';
+  $('#setupCancel').hidden = !c;
+  $('#setupForget').hidden = !c;
+  $('#convPane').hidden = true; $('#filesPane').hidden = true; $('#setupPane').hidden = false;
+}
+function hideSetup() { $('#setupPane').hidden = true; showTab(currentTab); }
+function explain(e) {
+  if (e.status === 401) return 'token ใช้ไม่ได้ (ผิด หรือหมดอายุ) — สร้างใหม่แล้ววางอีกครั้ง';
+  if (e.status === 403) return 'GitHub ปฏิเสธ (สิทธิ์ไม่พอ หรือเรียกบ่อยเกินไป) — ตรวจว่าให้สิทธิ์ Contents: Read-only';
+  if (e.status === 404) return 'ไม่พบ repo — ตรวจชื่อ owner/repo และว่า token เลือก repo นี้ไว้';
+  if (e.status === 409) return 'repo ยังว่างอยู่';
+  return 'เชื่อมต่อไม่ได้: ' + e.message;
+}
+$('#setupForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const cfg = { repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', token: $('#sToken').value.trim() };
+  $('#setupMsg').textContent = 'กำลังทดสอบ…';
+  const prev = GitHubSource.cfg;
+  GitHubSource.cfg = cfg; GitHubSource.files = null;
+  try {
+    await GitHubSource.tree(true);
+    store.set('chv-gh', cfg);
+    hideSetup();
+    await loadSessions();
+  } catch (err) {
+    GitHubSource.cfg = prev;
+    $('#setupMsg').textContent = explain(err);
+  }
+});
+$('#setupCancel').onclick = hideSetup;
+$('#setupForget').onclick = async () => {
+  store.del('chv-gh'); GitHubSource.cfg = null; GitHubSource.files = null; await idb.clear();
+  sessions = []; renderList(); showSetup('ลบ token และข้อมูลที่จำไว้ในเครื่องนี้แล้ว');
+};
+
+// ---------- events ----------
+let currentTab = 'conv';
+function showTab(t) {
+  currentTab = t;
+  $('#tabConv').classList.toggle('on', t === 'conv'); $('#tabFiles').classList.toggle('on', t === 'files');
+  $('#convPane').hidden = t !== 'conv'; $('#filesPane').hidden = t !== 'files';
+}
+$('#list').addEventListener('click', e => { const it = e.target.closest('.item'); if (it) openSession(it.dataset.path); });
+$('#ftree').addEventListener('click', e => { const it = e.target.closest('.f'); if (it) openFile(it.dataset.path); });
+$('#fMachine').addEventListener('change', renderList);
+$('#fProject').addEventListener('change', renderList);
+let qt;
+$('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { query = e.target.value.trim(); renderList(); if (current) openSession(current); }, 200); });
+$('#view').addEventListener('change', e => {
+  const p = e.target.dataset?.p; if (!p) return;
+  prefs[p] = e.target.checked; store.set('chv', prefs);
+  $('#conv').classList.toggle('hide-' + p, !prefs[p]);
+});
+document.addEventListener('click', e => {
+  if (e.target.id === 'back') { $('#convPane').classList.remove('has-sel'); current = null; renderList(); }
+  if (e.target.id === 'fback') $('#filesPane').classList.remove('has-sel');
+  if (e.target.id === 'modalClose' || e.target.id === 'modal') closeModal();
+  if (e.target.matches('.bubble img')) { openModal('<img src="' + esc(e.target.src) + '" alt="">'); $('#modal').classList.add('lightbox'); }
+  else if (e.target.closest('.lightbox')) closeModal();
+});
+$('#tabConv').onclick = () => showTab('conv');
+$('#tabFiles').onclick = async () => { showTab('files'); if (!filesLoaded) { $('#ftree').innerHTML = '<div class="empty">กำลังโหลด…</div>'; await loadFiles(); } };
+$('#syncBtn').onclick = async () => {
+  if (src.kind === 'local') { $('#syncBtn').disabled = true; fetch('/api/sync', {method: 'POST'}); setTimeout(watchSync, 300); return; }
+  $('#syncBtn').disabled = true;
+  try { await loadSessions(true); if (filesLoaded) await loadFiles(); } catch (err) { showSetup(explain(err)); }
+  $('#syncBtn').disabled = false;
+};
+$('#mobileBtn').onclick = showMobile;
+$('#settingsBtn').onclick = () => showSetup();
+
+(async () => {
+  src = await detectSource();
+  $('#syncBtn').hidden = false;
+  if (src.kind === 'local') {
+    $('#mobileBtn').hidden = !ping.local;
+  } else {
+    $('#syncBtn').innerHTML = '⟳<span class="lbl"> โหลดใหม่</span>';
+    $('#syncBtn').title = 'ดึงประวัติล่าสุดจาก GitHub';
+    $('#settingsBtn').hidden = false;
+    if (!GitHubSource.cfg) return showSetup();
+  }
+  try { await loadSessions(); }
+  catch (err) { if (src.kind === 'github') return showSetup(explain(err)); $('#list').innerHTML = '<div class="empty">โหลดไม่สำเร็จ: ' + esc(err.message) + '</div>'; }
+  const m = location.hash.match(/s=([^&]+)/);
+  if (m) openSession(decodeURIComponent(m[1]));
+  if (src.kind === 'local') watchSync();
+})();
+</script>
+</body>
+</html>
