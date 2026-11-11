@@ -163,16 +163,18 @@ details.tool .err{color:var(--err)}
     <ol>
       <li>เปิด <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">github.com/settings/personal-access-tokens/new</a></li>
       <li>Token name: <code>claude-history-phone</code> · Expiration: 1 ปี</li>
-      <li>Repository access: <b>Only select repositories</b> → เลือก <code>claude-setup</code></li>
+      <li>Repository access: <b>Only select repositories</b> → เลือก <code>claude-setup</code> และ <code>claude-skills-Mee</code></li>
       <li>Permissions → Repository → <b>Contents: Read-only</b></li>
       <li>กด Generate token แล้วคัดลอกมาวางด้านล่าง</li>
     </ol>
     <label for="sRepo">Repo (owner/name)</label>
     <input id="sRepo" required pattern="[\w.\-]+/[\w.\-]+" placeholder="owner/claude-setup">
+    <label for="sSkills">Repo ของ skill (ไม่บังคับ)</label>
+    <input id="sSkills" pattern="[\w.\-]+/[\w.\-]+" placeholder="owner/claude-skills-Mee">
     <label for="sBranch">Branch</label>
     <input id="sBranch" value="main" required>
     <label for="sToken">Token</label>
-    <input id="sToken" type="password" required placeholder="github_pat_…">
+    <input id="sToken" type="password" placeholder="github_pat_… (เว้นว่างได้ถ้าเคยใส่แล้ว)">
     <p style="font-size:12.5px">token เก็บไว้ในเบราว์เซอร์นี้เท่านั้น ส่งไปที่ api.github.com อย่างเดียว ยกเลิกได้ทุกเมื่อที่หน้า GitHub</p>
     <div class="msgline" id="setupMsg"></div>
     <div class="actions">
@@ -287,8 +289,9 @@ const idb = (() => {
 })();
 const GitHubSource = {
   kind: 'github', cfg: store.get('chv-gh', null), files: null, map: null,
-  async req(p, accept) {
-    const r = await fetch('https://api.github.com/repos/' + this.cfg.repo + p, {
+  skillsRepo() { return this.cfg.skillsRepo || (this.cfg.repo.split('/')[0] + '/claude-skills-Mee'); },
+  async req(p, accept, repo = this.cfg.repo) {
+    const r = await fetch('https://api.github.com/repos/' + repo + p, {
       cache: 'no-store',
       headers: { Authorization: 'Bearer ' + this.cfg.token, Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
     });
@@ -299,6 +302,13 @@ const GitHubSource = {
     if (this.files && !force) return this.files;
     const j = await (await this.req('/git/trees/' + encodeURIComponent(this.cfg.branch || 'main') + '?recursive=1')).json();
     this.files = j.tree.filter(t => t.type === 'blob').map(t => ({ path: t.path, size: t.size, sha: t.sha }));
+    // your skills live in a second private repo; the token may not have been given access to it
+    this.skillsError = null;
+    try {
+      const repo2 = this.skillsRepo();
+      const j2 = await (await this.req('/git/trees/main?recursive=1', null, repo2)).json();
+      for (const t of j2.tree) if (t.type === 'blob') this.files.push({ path: '@skills/' + t.path, size: t.size, sha: t.sha, repo: repo2 });
+    } catch (e) { this.skillsError = e.status || e.message; }
     this.map = new Map(this.files.map(f => [f.path, f]));
     return this.files;
   },
@@ -309,7 +319,7 @@ const GitHubSource = {
     const key = (binary ? 'b:' : 't:') + f.sha;      // git blob sha = content hash, so cache never goes stale
     let v = await idb.get(key);
     if (v !== undefined) return v;
-    const r = await this.req('/git/blobs/' + f.sha, 'application/vnd.github.raw+json');
+    const r = await this.req('/git/blobs/' + f.sha, 'application/vnd.github.raw+json', f.repo);
     v = binary ? await r.blob() : await r.text();
     idb.put(key, v);
     return v;
@@ -464,10 +474,11 @@ async function openSession(p) {
 }
 
 // ---------- files ----------
-const TEXT_EXT = /\.(md|txt|json|js|mjs|py|ya?ml|toml|html|css|sh|cmd|ps1|csv|pine|mq5|ts)$/i, IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const TEXT_EXT = /\.(md|txt|json|js|mjs|py|ya?ml|toml|html|css|sh|cmd|ps1|csv|pine|mq5|ts|gs|lua)$/i, IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
 const CONFIG = ['CLAUDE.md', 'config.json', 'settings/shared.json', 'mcp/claude-code.json', 'mcp/claude-desktop.json'];
 let filesLoaded = false;
 function fileGroup(p) {
+  if (p.startsWith('@skills/')) return /^@skills\/(\.claude-plugin|\.git)/.test(p) ? null : 'Skills ของฉัน (claude-skills-Mee)';
   if (CONFIG.includes(p)) return 'ตั้งค่า';
   if (/^machines\/[^/]+\.json$/.test(p)) return 'เครื่องที่ใช้ระบบนี้';
   if (p.startsWith('conflicts/')) return 'ฉบับที่ถูกแก้พร้อมกัน (เก็บไว้กันหาย)';
@@ -479,7 +490,7 @@ function fileGroup(p) {
   return (/\/tool-results\//.test(p) ? 'ภาพหน้าจอ / ผลลัพธ์ — ' : 'Memory และไฟล์อื่น — ') + m[1];
 }
 function shortName(p) {
-  return p.replace(/^history\/[^/]+\/(account-skills|claude-code)\//, '').replace(/^\.claude\/skills\//, '')
+  return p.replace(/^@skills\/(skills\/)?/, '').replace(/^history\/[^/]+\/(account-skills|claude-code)\//, '').replace(/^\.claude\/skills\//, '')
     .replace(/^[A-Za-z]--Users-[^/]*?scratch-workspaces-[^/]*?-scratch-(\d{4}-\d{2}-\d{2})-[0-9a-f]+/, 'Cowork $1 ›')
     .replace(/^[A-Za-z]--Users-[^-/]+-/, '')
     .replace(/\/([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//g, '/$1…/')
@@ -489,9 +500,15 @@ async function loadFiles(force) {
   if (src.kind === 'github' && force) await src.tree(true);
   const files = (await src.tree()).filter(f => (TEXT_EXT.test(f.path) || IMG_EXT.test(f.path)))
     .map(f => ({ ...f, group: fileGroup(f.path) })).filter(f => f.group);
-  const order = g => (g === 'เครื่องที่ใช้ระบบนี้' ? 0 : g === 'ตั้งค่า' ? 1 : g.startsWith('ฉบับที่') ? 2 : g === 'Skills ส่วนตัว' ? 3 : g.startsWith('Memory') ? 4 : g.startsWith('Skills') ? 5 : 6);
+  const order = g => (g.startsWith('Skills ของฉัน') ? 0 : g === 'เครื่องที่ใช้ระบบนี้' ? 1 : g === 'ตั้งค่า' ? 2 : g.startsWith('ฉบับที่') ? 3 : g === 'Skills ส่วนตัว' ? 4 : g.startsWith('Memory') ? 5 : g.startsWith('Skills') ? 6 : 7);
   files.sort((a, b) => order(a.group) - order(b.group) || a.group.localeCompare(b.group) || a.path.localeCompare(b.path));
   let html = '', group = null;
+  if (src.kind === 'github' && src.skillsError) {
+    html += '<h4>Skills ของฉัน (claude-skills-Mee)</h4><div class="f" style="cursor:default;color:var(--muted)">' +
+      (src.skillsError === 404 || src.skillsError === 403
+        ? 'token ยังไม่ได้เลือก repo <b>' + esc(src.skillsRepo()) + '</b> — แก้ token ที่ github.com/settings/personal-access-tokens ให้เลือก repo นี้เพิ่ม แล้วกด ⟳'
+        : 'โหลดไม่ได้: ' + esc(src.skillsError)) + '</div>';
+  }
   for (const f of files) {
     if (f.group !== group) { html += '<h4>' + esc(f.group) + '</h4>'; group = f.group; }
     html += '<div class="f" data-path="' + esc(f.path) + '">' + esc(shortName(f.path)) + ' <small>' + fmtSize(f.size) + '</small></div>';
@@ -564,6 +581,7 @@ function showSetup(message) {
   const owner = /\.github\.io$/i.test(location.hostname) ? location.hostname.split('.')[0] : '';
   $('#sRepo').value = c?.repo || (owner ? owner + '/claude-setup' : '');
   $('#sBranch').value = c?.branch || 'main';
+  $('#sSkills').value = c?.skillsRepo || '';
   $('#sToken').value = '';
   $('#setupMsg').textContent = message || '';
   $('#setupCancel').hidden = !c;
@@ -580,7 +598,7 @@ function explain(e) {
 }
 $('#setupForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const cfg = { repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', token: $('#sToken').value.trim() };
+  const cfg = { repo: $('#sRepo').value.trim(), branch: $('#sBranch').value.trim() || 'main', token: $('#sToken').value.trim() || GitHubSource.cfg?.token || '', skillsRepo: $('#sSkills').value.trim() || undefined };
   $('#setupMsg').textContent = 'กำลังทดสอบ…';
   const prev = GitHubSource.cfg;
   GitHubSource.cfg = cfg; GitHubSource.files = null;
