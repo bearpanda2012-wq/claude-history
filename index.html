@@ -480,6 +480,7 @@ let filesLoaded = false;
 function fileGroup(p) {
   if (p.startsWith('@skills/')) return /^@skills\/(\.claude-plugin|\.git)/.test(p) ? null : 'Skills ของฉัน (claude-skills-Mee)';
   if (CONFIG.includes(p)) return 'ตั้งค่า';
+  if (/^folders\/[^/]+\//.test(p)) return 'โฟลเดอร์งาน: ' + p.split('/')[1];
   if (/^machines\/[^/]+\.json$/.test(p)) return 'เครื่องที่ใช้ระบบนี้';
   if (p.startsWith('conflicts/')) return 'ฉบับที่ถูกแก้พร้อมกัน (เก็บไว้กันหาย)';
   if (p.startsWith('.claude/skills/')) return 'Skills ส่วนตัว';
@@ -490,7 +491,7 @@ function fileGroup(p) {
   return (/\/tool-results\//.test(p) ? 'ภาพหน้าจอ / ผลลัพธ์ — ' : 'Memory และไฟล์อื่น — ') + m[1];
 }
 function shortName(p) {
-  return p.replace(/^@skills\/(skills\/)?/, '').replace(/^history\/[^/]+\/(account-skills|claude-code)\//, '').replace(/^\.claude\/skills\//, '')
+  return p.replace(/^folders\/[^/]+\//, '').replace(/^@skills\/(skills\/)?/, '').replace(/^history\/[^/]+\/(account-skills|claude-code)\//, '').replace(/^\.claude\/skills\//, '')
     .replace(/^[A-Za-z]--Users-[^/]*?scratch-workspaces-[^/]*?-scratch-(\d{4}-\d{2}-\d{2})-[0-9a-f]+/, 'Cowork $1 ›')
     .replace(/^[A-Za-z]--Users-[^-/]+-/, '')
     .replace(/\/([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//g, '/$1…/')
@@ -500,7 +501,7 @@ async function loadFiles(force) {
   if (src.kind === 'github' && force) await src.tree(true);
   const files = (await src.tree()).filter(f => (TEXT_EXT.test(f.path) || IMG_EXT.test(f.path)))
     .map(f => ({ ...f, group: fileGroup(f.path) })).filter(f => f.group);
-  const order = g => (g.startsWith('Skills ของฉัน') ? 0 : g === 'เครื่องที่ใช้ระบบนี้' ? 1 : g === 'ตั้งค่า' ? 2 : g.startsWith('ฉบับที่') ? 3 : g === 'Skills ส่วนตัว' ? 4 : g.startsWith('Memory') ? 5 : g.startsWith('Skills') ? 6 : 7);
+  const order = g => (g.startsWith('โฟลเดอร์งาน') ? 0.5 : g.startsWith('Skills ของฉัน') ? 0 : g === 'เครื่องที่ใช้ระบบนี้' ? 1 : g === 'ตั้งค่า' ? 2 : g.startsWith('ฉบับที่') ? 3 : g === 'Skills ส่วนตัว' ? 4 : g.startsWith('Memory') ? 5 : g.startsWith('Skills') ? 6 : 7);
   files.sort((a, b) => order(a.group) - order(b.group) || a.group.localeCompare(b.group) || a.path.localeCompare(b.path));
   let html = '', group = null;
   if (src.kind === 'github' && src.skillsError) {
