@@ -7,11 +7,15 @@
 #   3. clones the private claude-setup repo (or repairs a broken/partial clone)
 #   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat)
 #   5. offers Google Drive upload setup if the Rhino work folder exists on this computer
+#   6. if ArtCAM 2018 is installed: clones/updates the private artcam-mcp repo and runs npm install
 # No secrets live in this file.
 $ErrorActionPreference = 'Continue'   # 'Stop' would turn git's normal stderr chatter into errors in Windows PowerShell 5.1
 $Repo   = 'https://github.com/bearpanda2012-wq/claude-setup.git'
 $Dir    = Join-Path $env:USERPROFILE 'claude-setup'
 $Rhino  = 'D:\Template Rhino'
+$ArtCAM = Join-Path $env:ProgramFiles 'Autodesk\ArtCAM 2018\Exec\ArtCAMPro.exe'
+$ArtRepo = 'https://github.com/bearpanda2012-wq/artcam-mcp.git'
+$ArtDir  = Join-Path $env:USERPROFILE 'artcam-mcp'   # must match the path in the synced "artcam" MCP entry
 
 function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "    OK  $m" -ForegroundColor Green }
@@ -79,6 +83,25 @@ if (Test-Path $Rhino) {
   Step 'Google Drive upload for the Rhino work folder'
   $a = Read-Host "    '$Rhino' exists on this computer. Set up the automatic Google Drive upload now? (y/n)"
   if ($a -match '^[yY]') { Push-Location $Dir; & node sync.mjs setup-drive; Pop-Location }
+}
+
+if (Test-Path $ArtCAM) {
+  Step "ArtCAM 2018 found - installing the artcam MCP server into $ArtDir"
+  try {
+    if (Test-Path (Join-Path $ArtDir '.git')) {
+      Push-Location $ArtDir; RunGit pull -q --ff-only; Pop-Location
+    } else {
+      RunGit clone -q $ArtRepo $ArtDir
+    }
+    Push-Location $ArtDir
+    & npm install --no-audit --no-fund --silent | Out-Host
+    $npmCode = $LASTEXITCODE
+    Pop-Location
+    if ($npmCode -ne 0) { throw "npm install failed (exit $npmCode)" }
+    Ok 'artcam-mcp ready (the "artcam" MCP entry arrives with the synced settings)'
+  } catch {
+    Write-Host "    [!] artcam-mcp was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
+  }
 }
 
 Write-Host "`n================================================================" -ForegroundColor Green
