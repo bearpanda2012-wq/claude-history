@@ -1,0 +1,89 @@
+# new-pc.ps1 - set up claude-setup on a new Windows computer with ONE command.
+#   Run (Win+R, cmd or PowerShell):
+#     powershell -ep bypass -c "irm https://raw.githubusercontent.com/bearpanda2012-wq/claude-history/main/new-pc.ps1 | iex"
+# What it does (safe to run again on a computer that is already set up):
+#   1. installs Git and Node.js LTS with winget if missing
+#   2. git settings: long paths + browser login (Git Credential Manager)
+#   3. clones the private claude-setup repo (or repairs a broken/partial clone)
+#   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat)
+#   5. offers Google Drive upload setup if the Rhino work folder exists on this computer
+# No secrets live in this file.
+$ErrorActionPreference = 'Continue'   # 'Stop' would turn git's normal stderr chatter into errors in Windows PowerShell 5.1
+$Repo   = 'https://github.com/bearpanda2012-wq/claude-setup.git'
+$Dir    = Join-Path $env:USERPROFILE 'claude-setup'
+$Rhino  = 'D:\Template Rhino'
+
+function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
+function Ok($m)   { Write-Host "    OK  $m" -ForegroundColor Green }
+function Die($m)  { Write-Host "`n[X] $m" -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
+function RefreshPath { $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') }
+function Has($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
+function RunGit { & git @args; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed (exit $LASTEXITCODE)" } }
+
+function Need($cmd, $id, $name) {
+  if (Has $cmd) { Ok "$name found"; return }
+  if (-not (Has 'winget')) { Die "$name is missing and winget is not available. Install $name by hand, then run this again." }
+  Write-Host "    installing $name (a Windows prompt may ask for permission)..."
+  & winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements | Out-Host
+  RefreshPath
+  if (-not (Has $cmd)) {
+    foreach ($p in @("$env:ProgramFiles\Git\cmd", "$env:ProgramFiles\nodejs")) { if (Test-Path $p) { $env:Path += ";$p" } }
+  }
+  if (-not (Has $cmd)) { Die "$name was installed but is not on PATH yet. Close this window and run the same command again." }
+  Ok "$name installed"
+}
+
+Write-Host "claude-setup for a new computer: $env:COMPUTERNAME ($env:USERNAME)" -ForegroundColor Yellow
+
+Step 'Checking Git and Node.js'
+Need 'git'  'Git.Git'           'Git'
+Need 'node' 'OpenJS.NodeJS.LTS' 'Node.js'
+
+Step 'Git settings'
+RunGit config --global core.longpaths true
+$helper = (& git config --global credential.helper) 2>$null
+if (-not $helper) { RunGit config --global credential.helper manager }
+Ok 'long paths on, browser login on'
+
+Step "Getting claude-setup into $Dir  (a browser window may ask you to log in to GitHub)"
+if (Test-Path (Join-Path $Dir '.git')) {
+  Push-Location $Dir
+  try {
+    RunGit fetch -q origin main
+    RunGit checkout -q -f -B main FETCH_HEAD      # also repairs a half-finished first clone
+    & git branch -q -u origin/main 2>$null | Out-Null
+    if (-not (Test-Path "machines\$env:COMPUTERNAME.json")) {
+      Remove-Item (Join-Path $env:USERPROFILE '.claude-setup\state.json') -ErrorAction SilentlyContinue   # forget a failed first run
+    }
+  } catch { Pop-Location; Die "Could not update the existing folder: $_" }
+  Pop-Location
+  Ok 'existing folder updated'
+} else {
+  if (Test-Path $Dir) {
+    $bak = "$Dir.old-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    Rename-Item $Dir $bak -ErrorAction Stop
+    Write-Host "    an incomplete folder was moved aside to $bak"
+  }
+  try { RunGit clone -q $Repo $Dir } catch { Die "Clone failed. Log in to GitHub as bearpanda2012-wq in the browser window, then run this again. ($_)" }
+  Ok 'cloned'
+}
+
+Step 'Running setup  (type your passphrase when asked - the same one as on your other computers)'
+Push-Location $Dir
+& node sync.mjs setup
+$code = $LASTEXITCODE
+Pop-Location
+if ($code -ne 0) { Die "setup stopped with an error (exit $code). Take a screenshot of this window and send it to Claude." }
+
+if (Test-Path $Rhino) {
+  Step 'Google Drive upload for the Rhino work folder'
+  $a = Read-Host "    '$Rhino' exists on this computer. Set up the automatic Google Drive upload now? (y/n)"
+  if ($a -match '^[yY]') { Push-Location $Dir; & node sync.mjs setup-drive; Pop-Location }
+}
+
+Write-Host "`n================================================================" -ForegroundColor Green
+Write-Host " DONE. This computer ($env:COMPUTERNAME) is now synced."            -ForegroundColor Green
+Write-Host " Last step: Quit Claude Desktop (right-click the tray icon > Quit)" -ForegroundColor Green
+Write-Host " and open it again, so it loads the MCP servers and skills."        -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
+Read-Host 'Press Enter to close'
