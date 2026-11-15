@@ -5,10 +5,12 @@
 #   1. installs Git and Node.js LTS with winget if missing
 #   2. git settings: long paths + browser login (Git Credential Manager)
 #   3. clones the private claude-setup repo (or repairs a broken/partial clone)
-#   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat)
-#   5. offers Google Drive upload setup if the Rhino work folder exists on this computer
+#   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat; skipped if already saved)
+#   5. Google Drive upload, automatically, if the Rhino work folder exists on this computer
 #   6. if ArtCAM 2018 is installed: clones/updates the private artcam-mcp repo, runs npm install,
-#      and offers to install the in-app bridge (admin prompt)
+#      and installs the in-app bridge (one Windows admin prompt)
+# No y/n questions. The only things you may be asked for: Windows "Yes" prompts, GitHub / Google sign-in
+# in the browser (first time only) and the passphrase (first time only).
 # No secrets live in this file.
 $ErrorActionPreference = 'Continue'   # 'Stop' would turn git's normal stderr chatter into errors in Windows PowerShell 5.1
 $Repo   = 'https://github.com/bearpanda2012-wq/claude-setup.git'
@@ -48,7 +50,12 @@ Step 'Git settings'
 RunGit config --global core.longpaths true
 $helper = (& git config --global credential.helper) 2>$null
 if (-not $helper) { RunGit config --global credential.helper manager }
-Ok 'long paths on, browser login on'
+# commits fail without an identity; use the public GitHub no-reply address (no private email in this public file)
+if (-not ((& git config --global user.email) 2>$null)) {
+  RunGit config --global user.name 'Bear'
+  RunGit config --global user.email 'bearpanda2012-wq@users.noreply.github.com'
+}
+Ok 'long paths on, browser login on, git identity set'
 
 Step "Getting claude-setup into $Dir  (a browser window may ask you to log in to GitHub)"
 if (Test-Path (Join-Path $Dir '.git')) {
@@ -81,9 +88,8 @@ Pop-Location
 if ($code -ne 0) { Die "setup stopped with an error (exit $code). Take a screenshot of this window and send it to Claude." }
 
 if (Test-Path $Rhino) {
-  Step 'Google Drive upload for the Rhino work folder'
-  $a = Read-Host "    '$Rhino' exists on this computer. Set up the automatic Google Drive upload now? (y/n)"
-  if ($a -match '^[yY]') { Push-Location $Dir; & node sync.mjs setup-drive; Pop-Location }
+  Step "Google Drive upload for '$Rhino'  (first time: sign in to Google in the browser and click Allow)"
+  Push-Location $Dir; & node sync.mjs setup-drive; Pop-Location
 }
 
 if (Test-Path $ArtCAM) {
@@ -102,12 +108,12 @@ if (Test-Path $ArtCAM) {
     Ok 'artcam-mcp ready (the "artcam" MCP entry arrives with the synced settings)'
     $frame = Join-Path $env:ProgramFiles 'Autodesk\ArtCAM 2018\Html\ArtCAMSideBar\AssistantProFrame.htm'
     if (-not (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet)) {
-      $b = Read-Host "    Install the fast in-app bridge into ArtCAM too? Needs admin (a Windows prompt) - close ArtCAM first. (y/n)"
-      if ($b -match '^[yY]') {
-        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1')
-        if (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet) { Ok 'ArtCAM bridge installed (restart ArtCAM)' }
-        else { Write-Host '    [!] bridge not installed - run bridge\install-bridge.ps1 as admin later.' -ForegroundColor Yellow }
-      }
+      Write-Host '    installing the ArtCAM in-app bridge (Windows asks for permission - click Yes)...'
+      try {
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1'), '-NoPause'
+      } catch { }   # "No" on the Windows prompt lands here
+      if (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet) { Ok 'ArtCAM bridge installed (restart ArtCAM if it is open)' }
+      else { Write-Host '    [!] bridge not installed - run bridge\install-bridge.ps1 as admin later.' -ForegroundColor Yellow }
     } else { Ok 'ArtCAM bridge already installed' }
   } catch {
     Write-Host "    [!] artcam-mcp was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
@@ -119,4 +125,5 @@ Write-Host " DONE. This computer ($env:COMPUTERNAME) is now synced."            
 Write-Host " Last step: Quit Claude Desktop (right-click the tray icon > Quit)" -ForegroundColor Green
 Write-Host " and open it again, so it loads the MCP servers and skills."        -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
-Read-Host 'Press Enter to close'
+Write-Host 'This window closes by itself in 30 seconds.'
+Start-Sleep -Seconds 30
