@@ -7,7 +7,8 @@
 #   3. clones the private claude-setup repo (or repairs a broken/partial clone)
 #   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat)
 #   5. offers Google Drive upload setup if the Rhino work folder exists on this computer
-#   6. if ArtCAM 2018 is installed: clones/updates the private artcam-mcp repo and runs npm install
+#   6. if ArtCAM 2018 is installed: clones/updates the private artcam-mcp repo, runs npm install,
+#      and offers to install the in-app bridge (admin prompt)
 # No secrets live in this file.
 $ErrorActionPreference = 'Continue'   # 'Stop' would turn git's normal stderr chatter into errors in Windows PowerShell 5.1
 $Repo   = 'https://github.com/bearpanda2012-wq/claude-setup.git'
@@ -99,6 +100,15 @@ if (Test-Path $ArtCAM) {
     Pop-Location
     if ($npmCode -ne 0) { throw "npm install failed (exit $npmCode)" }
     Ok 'artcam-mcp ready (the "artcam" MCP entry arrives with the synced settings)'
+    $frame = Join-Path $env:ProgramFiles 'Autodesk\ArtCAM 2018\Html\ArtCAMSideBar\AssistantProFrame.htm'
+    if (-not (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet)) {
+      $b = Read-Host "    Install the fast in-app bridge into ArtCAM too? Needs admin (a Windows prompt) - close ArtCAM first. (y/n)"
+      if ($b -match '^[yY]') {
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1')
+        if (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet) { Ok 'ArtCAM bridge installed (restart ArtCAM)' }
+        else { Write-Host '    [!] bridge not installed - run bridge\install-bridge.ps1 as admin later.' -ForegroundColor Yellow }
+      }
+    } else { Ok 'ArtCAM bridge already installed' }
   } catch {
     Write-Host "    [!] artcam-mcp was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
   }
