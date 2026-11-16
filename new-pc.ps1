@@ -2,7 +2,8 @@
 #   Run (Win+R, cmd or PowerShell):
 #     powershell -ep bypass -c "irm https://raw.githubusercontent.com/bearpanda2012-wq/claude-history/main/new-pc.ps1 | iex"
 # What it does (safe to run again on a computer that is already set up):
-#   1. installs Git and Node.js LTS with winget if missing
+#   1. installs Git and Node.js LTS with winget if missing, then "npm install -g agent-desktop"
+#      (computer-use CLI for Claude; skipped if already installed, only a warning if it fails)
 #   2. git settings: long paths + browser login (Git Credential Manager)
 #   3. clones the private claude-setup repo (or repairs a broken/partial clone)
 #   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat; skipped if already saved)
@@ -45,6 +46,20 @@ Write-Host "claude-setup for a new computer: $env:COMPUTERNAME ($env:USERNAME)" 
 Step 'Checking Git and Node.js'
 Need 'git'  'Git.Git'           'Git'
 Need 'node' 'OpenJS.NodeJS.LTS' 'Node.js'
+
+Step 'agent-desktop (computer-use CLI for Claude)'
+try {
+  & npm ls -g agent-desktop --depth=0 *> $null
+  if ($LASTEXITCODE -eq 0) { Ok 'agent-desktop already installed' }
+  else {
+    & npm install -g agent-desktop --no-audit --no-fund --silent | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "npm install -g agent-desktop failed (exit $LASTEXITCODE)" }
+    RefreshPath
+    Ok 'agent-desktop installed'
+  }
+} catch {
+  Write-Host "    [!] agent-desktop was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
+}
 
 Step 'Git settings'
 RunGit config --global core.longpaths true
