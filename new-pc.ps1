@@ -13,6 +13,10 @@
 #      2017 47817, 2018 47820) plus a scheduled task that keeps it up to date - one Windows admin prompt,
 #      the only one ever. After that sync.mjs keeps artcam-mcp up to date ("gitPrograms" in config.json)
 #      and the task reinstalls the bridge by itself whenever it changed (while ArtCAM is closed).
+#   7. if OpenAI Codex is installed (%USERPROFILE%\.codex): the Codex skill rhino-job-royal-codex with all of
+#      Claude's knowledge + its hourly refresh task (install-codex-knowledge.ps1 from the synced setup-new-pc skill)
+# Claude's /setup-new-pc runs this same file on a computer that is already set up (everything is skipped or
+# repaired, nothing is asked); there it sets CLAUDE_SETUP_NOWAIT=1 so the window does not wait 30 s at the end.
 # No y/n questions. The only things you may be asked for: Windows "Yes" prompts, GitHub / Google sign-in
 # in the browser (first time only) and the passphrase (first time only).
 # No secrets live in this file.
@@ -53,12 +57,21 @@ Need 'git'  'Git.Git'           'Git'
 Need 'node' 'OpenJS.NodeJS.LTS' 'Node.js'
 
 Step 'agent-desktop (computer-use CLI for Claude)'
+# On some computers the antivirus (e.g. Symantec at work) quarantines agent-desktop's binary as a heuristic
+# detection. Then do not try again on every run (each try raises a new antivirus alert): a marker remembers it.
+# Delete %USERPROFILE%\.claude-setup\agent-desktop-blocked to try again (e.g. after IT allows it).
+$AdBlocked = Join-Path $env:USERPROFILE '.claude-setup\agent-desktop-blocked'
 try {
   & npm ls -g agent-desktop --depth=0 *> $null
   if ($LASTEXITCODE -eq 0) { Ok 'agent-desktop already installed' }
+  elseif (Test-Path $AdBlocked) { Write-Host '    skipped: blocked by the antivirus on this computer before (delete .claude-setup\agent-desktop-blocked to retry)' -ForegroundColor Yellow }
   else {
     & npm install -g agent-desktop --no-audit --no-fund --silent | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "npm install -g agent-desktop failed (exit $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) {
+      New-Item -ItemType Directory -Force (Split-Path $AdBlocked) | Out-Null
+      Set-Content $AdBlocked "npm install -g agent-desktop failed $(Get-Date -Format s) (antivirus quarantine?)"
+      throw "npm install -g agent-desktop failed (exit $LASTEXITCODE) - probably the antivirus; not retried on later runs"
+    }
     RefreshPath
     Ok 'agent-desktop installed'
   }
@@ -146,10 +159,21 @@ if ($ArtCAMs) {
   }
 }
 
+$Codex = Join-Path $env:USERPROFILE '.codex'
+$CodexKit = Join-Path $env:USERPROFILE '.claude\skills\setup-new-pc\references\codex\install-codex-knowledge.ps1'
+if ((Test-Path $Codex) -and (Test-Path $CodexKit)) {
+  Step 'Codex found - giving it the rhino-job-royal-codex skill with all of Claude''s knowledge'
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $CodexKit | Out-Host
+  if ($LASTEXITCODE -eq 0) { Ok 'Codex knowledge installed (refreshes itself every hour)' }
+  else { Write-Host "    [!] Codex step failed (exit $LASTEXITCODE) - the rest of the setup is fine." -ForegroundColor Yellow }
+}
+
 Write-Host "`n================================================================" -ForegroundColor Green
 Write-Host " DONE. This computer ($env:COMPUTERNAME) is now synced."            -ForegroundColor Green
 Write-Host " Last step: Quit Claude Desktop (right-click the tray icon > Quit)" -ForegroundColor Green
 Write-Host " and open it again, so it loads the MCP servers and skills."        -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
-Write-Host 'This window closes by itself in 30 seconds.'
-Start-Sleep -Seconds 30
+if ($env:CLAUDE_SETUP_NOWAIT -ne '1') {
+  Write-Host 'This window closes by itself in 30 seconds.'
+  Start-Sleep -Seconds 30
+}
