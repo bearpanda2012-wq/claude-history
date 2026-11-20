@@ -8,8 +8,10 @@
 #   3. clones the private claude-setup repo (or repairs a broken/partial clone)
 #   4. runs "node sync.mjs setup"  -> you type the passphrase here (never in chat; skipped if already saved)
 #   5. Google Drive upload, automatically, if the Rhino work folder exists on this computer
-#   6. if ArtCAM 2018 is installed: clones/updates the private artcam-mcp repo, runs npm install,
-#      and installs the in-app bridge (one Windows admin prompt)
+#   6. if ArtCAM 2012, 2017 or 2018 is installed: clones/updates the private artcam-mcp repo, runs npm
+#      install, and installs the in-app bridge into every version with its own port (2012 47812,
+#      2017 47817, 2018 47820) - one Windows admin prompt, only when a bridge is missing or out of date.
+#      After that, sync.mjs keeps artcam-mcp up to date by itself ("gitPrograms" in config.json).
 # No y/n questions. The only things you may be asked for: Windows "Yes" prompts, GitHub / Google sign-in
 # in the browser (first time only) and the passphrase (first time only).
 # No secrets live in this file.
@@ -17,7 +19,9 @@ $ErrorActionPreference = 'Continue'   # 'Stop' would turn git's normal stderr ch
 $Repo   = 'https://github.com/bearpanda2012-wq/claude-setup.git'
 $Dir    = Join-Path $env:USERPROFILE 'claude-setup'
 $Rhino  = 'D:\Template Rhino'
-$ArtCAM = Join-Path $env:ProgramFiles 'Autodesk\ArtCAM 2018\Exec\ArtCAMPro.exe'
+$ArtCAMs = @('Autodesk\ArtCAM 2018', 'Autodesk\ArtCAM 2017', 'ArtCAM 2012') |
+  ForEach-Object { Join-Path $env:ProgramFiles $_ } |
+  Where-Object { (Test-Path "$_\Exec\ArtCAMPro.exe") -or (Test-Path "$_\Exec64\ArtCAMPro.exe") }
 $ArtRepo = 'https://github.com/bearpanda2012-wq/artcam-mcp.git'
 $ArtDir  = Join-Path $env:USERPROFILE 'artcam-mcp'   # must match the path in the synced "artcam" MCP entry
 
@@ -107,8 +111,8 @@ if (Test-Path $Rhino) {
   Push-Location $Dir; & node sync.mjs setup-drive; Pop-Location
 }
 
-if (Test-Path $ArtCAM) {
-  Step "ArtCAM 2018 found - installing the artcam MCP server into $ArtDir"
+if ($ArtCAMs) {
+  Step ("ArtCAM found ({0}) - installing the artcam MCP server into $ArtDir" -f (($ArtCAMs | Split-Path -Leaf) -join ', '))
   try {
     if (Test-Path (Join-Path $ArtDir '.git')) {
       Push-Location $ArtDir; RunGit pull -q --ff-only; Pop-Location
@@ -121,15 +125,19 @@ if (Test-Path $ArtCAM) {
     Pop-Location
     if ($npmCode -ne 0) { throw "npm install failed (exit $npmCode)" }
     Ok 'artcam-mcp ready (the "artcam" MCP entry arrives with the synced settings)'
-    $frame = Join-Path $env:ProgramFiles 'Autodesk\ArtCAM 2018\Html\ArtCAMSideBar\AssistantProFrame.htm'
-    if (-not (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet)) {
-      Write-Host '    installing the ArtCAM in-app bridge (Windows asks for permission - click Yes)...'
+    # every installed version gets the bridge with its own port; check-bridge.ps1 says if anything is missing/stale
+    $check = Join-Path $ArtDir 'bridge\check-bridge.ps1'
+    $need = & powershell -NoProfile -ExecutionPolicy Bypass -File $check
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "    $need"
+      Write-Host '    installing the ArtCAM in-app bridge into every version (Windows asks for permission - click Yes)...'
       try {
-        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1'), '-NoPause'
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1'), '-All', '-NoPause'
       } catch { }   # "No" on the Windows prompt lands here
-      if (Select-String -Path $frame -Pattern 'McpBridge.js' -Quiet) { Ok 'ArtCAM bridge installed (restart ArtCAM if it is open)' }
-      else { Write-Host '    [!] bridge not installed - run bridge\install-bridge.ps1 as admin later.' -ForegroundColor Yellow }
-    } else { Ok 'ArtCAM bridge already installed' }
+      & powershell -NoProfile -ExecutionPolicy Bypass -File $check | Out-Null
+      if ($LASTEXITCODE -eq 0) { Ok 'ArtCAM bridge installed in every version (restart ArtCAM if it is open)' }
+      else { Write-Host '    [!] bridge not (fully) installed - run bridge\install-bridge.ps1 -All as admin later.' -ForegroundColor Yellow }
+    } else { Ok 'ArtCAM bridge up to date in every version' }
   } catch {
     Write-Host "    [!] artcam-mcp was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
   }
