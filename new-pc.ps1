@@ -10,8 +10,9 @@
 #   5. Google Drive upload, automatically, if the Rhino work folder exists on this computer
 #   6. if ArtCAM 2012, 2017 or 2018 is installed: clones/updates the private artcam-mcp repo, runs npm
 #      install, and installs the in-app bridge into every version with its own port (2012 47812,
-#      2017 47817, 2018 47820) - one Windows admin prompt, only when a bridge is missing or out of date.
-#      After that, sync.mjs keeps artcam-mcp up to date by itself ("gitPrograms" in config.json).
+#      2017 47817, 2018 47820) plus a scheduled task that keeps it up to date - one Windows admin prompt,
+#      the only one ever. After that sync.mjs keeps artcam-mcp up to date ("gitPrograms" in config.json)
+#      and the task reinstalls the bridge by itself whenever it changed (while ArtCAM is closed).
 # No y/n questions. The only things you may be asked for: Windows "Yes" prompts, GitHub / Google sign-in
 # in the browser (first time only) and the passphrase (first time only).
 # No secrets live in this file.
@@ -125,19 +126,21 @@ if ($ArtCAMs) {
     Pop-Location
     if ($npmCode -ne 0) { throw "npm install failed (exit $npmCode)" }
     Ok 'artcam-mcp ready (the "artcam" MCP entry arrives with the synced settings)'
-    # every installed version gets the bridge with its own port; check-bridge.ps1 says if anything is missing/stale
+    # every installed version gets the bridge with its own port, and a scheduled task keeps it up to date:
+    # register-auto-update.ps1 = the only admin step, ever (one Windows prompt); it also installs right away
     $check = Join-Path $ArtDir 'bridge\check-bridge.ps1'
-    $need = & powershell -NoProfile -ExecutionPolicy Bypass -File $check
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "    $need"
-      Write-Host '    installing the ArtCAM in-app bridge into every version (Windows asks for permission - click Yes)...'
+    $auto  = Join-Path $env:ProgramData 'artcam-mcp-bridge\auto-update-bridge.ps1'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $check | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $auto)) {
+      Write-Host '    setting up the ArtCAM bridge + its automatic updates (Windows asks for permission once - click Yes)...'
       try {
-        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\install-bridge.ps1'), '-All', '-NoPause'
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ArtDir 'bridge\register-auto-update.ps1'), '-NoPause'
       } catch { }   # "No" on the Windows prompt lands here
       & powershell -NoProfile -ExecutionPolicy Bypass -File $check | Out-Null
-      if ($LASTEXITCODE -eq 0) { Ok 'ArtCAM bridge installed in every version (restart ArtCAM if it is open)' }
-      else { Write-Host '    [!] bridge not (fully) installed - run bridge\install-bridge.ps1 -All as admin later.' -ForegroundColor Yellow }
-    } else { Ok 'ArtCAM bridge up to date in every version' }
+      if ($LASTEXITCODE -eq 0 -and (Test-Path $auto)) { Ok 'ArtCAM bridge installed in every version + updates itself from now on (restart ArtCAM if it is open)' }
+      elseif (Test-Path $auto) { Ok 'ArtCAM bridge auto-update registered (it installs once ArtCAM is closed)' }
+      else { Write-Host '    [!] bridge not set up - run bridge\register-auto-update.ps1 as admin later.' -ForegroundColor Yellow }
+    } else { Ok 'ArtCAM bridge up to date in every version and updating itself' }
   } catch {
     Write-Host "    [!] artcam-mcp was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
   }
