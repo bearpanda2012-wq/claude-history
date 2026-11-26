@@ -15,6 +15,8 @@
 #      and the task reinstalls the bridge by itself whenever it changed (while ArtCAM is closed).
 #   7. if OpenAI Codex is installed (%USERPROFILE%\.codex): the Codex skill rhino-job-royal-codex with all of
 #      Claude's knowledge + its hourly refresh task (install-codex-knowledge.ps1 from the synced setup-new-pc skill)
+#   8. Rust for rust-anything: Visual C++ build tools + rustup (winget) if missing, then "cargo install rust-anything"
+#      (also updates it on later runs); the "rust-anything" MCP entry itself arrives with the synced settings
 # Claude's /setup-new-pc runs this same file on a computer that is already set up (everything is skipped or
 # repaired, nothing is asked); there it sets CLAUDE_SETUP_NOWAIT=1 so the window does not wait 30 s at the end.
 # No y/n questions. The only things you may be asked for: Windows "Yes" prompts, GitHub / Google sign-in
@@ -166,6 +168,41 @@ if ((Test-Path $Codex) -and (Test-Path $CodexKit)) {
   & powershell -NoProfile -ExecutionPolicy Bypass -File $CodexKit | Out-Host
   if ($LASTEXITCODE -eq 0) { Ok 'Codex knowledge installed (refreshes itself every hour)' }
   else { Write-Host "    [!] Codex step failed (exit $LASTEXITCODE) - the rest of the setup is fine." -ForegroundColor Yellow }
+}
+
+Step 'Rust + rust-anything (port slow code to Rust; the "rust-anything" MCP entry arrives with the synced settings)'
+# Needs: Visual C++ build tools (Rust's linker on Windows) -> rustup -> "cargo install rust-anything".
+# Every part is skipped when present; "cargo install" is a quick no-op when the newest version is already there,
+# so running this again also updates rust-anything. A failure is only a yellow warning.
+# Never run "rust-anything setup": it would add a second copy of the skill (it lives in awesome-skills/rust-anything).
+try {
+  $CargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+  function AddCargo { if ((Test-Path $CargoBin) -and ($env:Path -notlike "*$CargoBin*")) { $env:Path += ";$CargoBin" } }
+  AddCargo
+  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+  function HasVC { (Test-Path $vswhere) -and [bool](& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath) }
+  if (HasVC) { Ok 'Visual C++ build tools found' }
+  else {
+    Write-Host '    installing Visual Studio Build Tools with C++ (a few GB, takes a while; a Windows prompt may ask for permission)...'
+    & winget install --id Microsoft.VisualStudio.2022.BuildTools -e --silent --accept-package-agreements --accept-source-agreements `
+      --override '--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended' | Out-Host
+    if (HasVC) { Ok 'Visual C++ build tools installed' }
+    else { throw 'Visual C++ build tools are missing (if Build Tools is installed, add "Desktop development with C++" in Visual Studio Installer)' }
+  }
+  if (Has 'cargo') { Ok 'Rust found' }
+  else {
+    Write-Host '    installing Rust (rustup)...'
+    & winget install --id Rustlang.Rustup -e --silent --accept-package-agreements --accept-source-agreements | Out-Host
+    RefreshPath; AddCargo
+    if (-not (Has 'cargo')) { throw 'Rust was installed but cargo is not found yet - run this again in a new window' }
+    Ok 'Rust installed'
+  }
+  Write-Host '    cargo install rust-anything (first time compiles for a few minutes)...'
+  & cargo install rust-anything --locked 2>&1 | Select-Object -Last 2 | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "cargo install rust-anything failed (exit $LASTEXITCODE)" }
+  Ok ("rust-anything ready: " + (& rust-anything --version))
+} catch {
+  Write-Host "    [!] rust-anything was not installed: $_  - the rest of the setup is fine." -ForegroundColor Yellow
 }
 
 Write-Host "`n================================================================" -ForegroundColor Green
